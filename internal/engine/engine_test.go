@@ -67,6 +67,21 @@ func TestMidRoundIncumbentStillRoutesBeforeBreakerFires(t *testing.T) {
 	}
 }
 
+func TestConsensusTakesPriorityOverRoundLimitAtBoundary(t *testing.T) {
+	// Both triggers fire at once: ActiveContentions empty AND RoundCount ==
+	// MaxRounds. Consensus must win — this pins the branch ordering so a
+	// future refactor that swaps the two checks fails loudly.
+	st := openingState()
+	st.TurnCount = 6
+	st.RoundCount = st.MaxRounds
+	st.NextRole = state.RoleChallenger
+	st.ActiveContentions = nil
+	got := NextAction(st)
+	if got.Type != ActionCompile || got.Reason != "consensus" {
+		t.Errorf("want compile/consensus (not round_limit), got %+v", got)
+	}
+}
+
 func TestOpeningCritiqueWithNoContentionsCompilesCleanBill(t *testing.T) {
 	st := openingState()
 	st.TurnCount = 1
