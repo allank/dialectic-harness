@@ -75,16 +75,26 @@ func TestDirectiveIgnoredWhenTargetDodges(t *testing.T) {
 	}
 }
 
-func TestDirectiveTargetingOtherAgentIsUntouched(t *testing.T) {
+func TestDirectiveTargetingOtherAgentIsUntouchedByThisTurn(t *testing.T) {
 	st := stateWithC1C2(t)
-	st.RequiredRebuttals = append(st.RequiredRebuttals, state.Directive{
-		Target: state.RoleIncumbent, Contention: "C2", Directive: "Address rollback.", IssuedTurn: 1,
-	})
-	// Incumbent's own turn: the directive targets the incumbent, and it cites C2 — satisfied.
+	directive := state.Directive{
+		Target: state.RoleChallenger, Contention: "C1", Directive: "Provide evidence.", IssuedTurn: 1,
+	}
+	st.RequiredRebuttals = append(st.RequiredRebuttals, directive)
+	// Incumbent's turn cites the SAME contention (C1) the directive targets, but the
+	// directive targets the challenger, not the incumbent — satisfaction only applies
+	// to directives targeting the CURRENT turn's agent, so this must leave the
+	// directive completely unchanged: not satisfied, not moved to ignored.
 	_ = Merge(st, turn.File{Agent: state.RoleIncumbent, Entries: []turn.Entry{
-		{Contention: "C2", Stance: state.StanceConcur, Rationale: "rollback section agreed"},
+		{Contention: "C1", Stance: state.StanceRebut, Rationale: "latency"},
 	}})
-	if len(st.RequiredRebuttals) != 0 || len(st.IgnoredDirectives) != 0 {
-		t.Errorf("directive should be satisfied: req=%+v ign=%+v", st.RequiredRebuttals, st.IgnoredDirectives)
+	if len(st.RequiredRebuttals) != 1 {
+		t.Fatalf("directive targeting the other agent must remain in required_rebuttals, got %+v", st.RequiredRebuttals)
+	}
+	if st.RequiredRebuttals[0] != directive {
+		t.Errorf("directive must be byte-for-byte unchanged: got %+v, want %+v", st.RequiredRebuttals[0], directive)
+	}
+	if len(st.IgnoredDirectives) != 0 {
+		t.Errorf("directive targeting the other agent must not be moved to ignored, got %+v", st.IgnoredDirectives)
 	}
 }
