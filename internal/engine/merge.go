@@ -114,6 +114,34 @@ func removeActive(st *state.DebateState, id string) *state.Contention {
 	return nil
 }
 
-// mergeDirectives is completed in the directives task; for now it is a stub
-// so Merge compiles.
-func mergeDirectives(st *state.DebateState, tf turn.File, turnNum int) {}
+// mergeDirectives processes directive issuance and ignored-directive detection.
+// Directives issued by the current agent target the other role; satisfaction
+// is detected via field reads (contention citation) rather than judgment.
+func mergeDirectives(st *state.DebateState, tf turn.File, turnNum int) {
+	cited := map[string]bool{}
+	for _, e := range tf.Entries {
+		if e.Contention != "" {
+			cited[e.Contention] = true
+		}
+	}
+	var remaining []state.Directive
+	for _, d := range st.RequiredRebuttals {
+		switch {
+		case d.Target != tf.Agent:
+			remaining = append(remaining, d)
+		case cited[d.Contention]:
+			// satisfied: drop
+		default:
+			st.IgnoredDirectives = append(st.IgnoredDirectives, d)
+		}
+	}
+	st.RequiredRebuttals = remaining
+	for _, req := range tf.Directives {
+		st.RequiredRebuttals = append(st.RequiredRebuttals, state.Directive{
+			Target:     tf.Agent.Other(),
+			Contention: req.Contention,
+			Directive:  req.Directive,
+			IssuedTurn: turnNum,
+		})
+	}
+}
