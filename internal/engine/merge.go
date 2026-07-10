@@ -28,15 +28,11 @@ func Merge(st *state.DebateState, tf turn.File) error {
 		switch e.Stance {
 		case state.StanceNew:
 			id = st.NextContentionID()
-			stanceText := e.Position
-			if stanceText == "" {
-				stanceText = e.Rationale
-			}
 			st.ActiveContentions = append(st.ActiveContentions, state.Contention{
 				ID:       id,
 				Issue:    e.Issue,
 				Severity: e.Severity,
-				Stances:  map[state.Role]string{tf.Agent: stanceText},
+				Stances:  map[state.Role]string{tf.Agent: stanceText(e)},
 			})
 		case state.StanceConcur:
 			concurRationale[id] = e.Rationale
@@ -96,11 +92,16 @@ func updateStanceText(st *state.DebateState, id string, agent state.Role, e turn
 	if c.Stances == nil {
 		c.Stances = map[state.Role]string{}
 	}
-	text := e.Position
-	if text == "" {
-		text = e.Rationale
+	c.Stances[agent] = stanceText(e)
+}
+
+// stanceText picks the text to record for a stance: Position when the
+// entry supplies one, falling back to Rationale otherwise.
+func stanceText(e turn.Entry) string {
+	if e.Position != "" {
+		return e.Position
 	}
-	c.Stances[agent] = text
+	return e.Rationale
 }
 
 func removeActive(st *state.DebateState, id string) *state.Contention {

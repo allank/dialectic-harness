@@ -70,9 +70,17 @@ func BuildIndex(root string) (string, error) {
 	b.WriteString("|---------|----------|------|---------|---------|-----|-------|\n")
 	for _, r := range rows {
 		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s | [brief](%s) |\n",
-			r.Created, r.Artifact, r.Slug, r.Outcome, r.Verdict, r.Why, r.RelPath)
+			escapePipe(r.Created), escapePipe(r.Artifact), escapePipe(r.Slug),
+			escapePipe(r.Outcome), escapePipe(r.Verdict), escapePipe(r.Why), r.RelPath)
 	}
 	return b.String(), nil
+}
+
+// escapePipe escapes literal pipe characters so a value containing one
+// (most plausibly free-form arbiter text in Why, or an artifact filename)
+// cannot break the Markdown table's column structure.
+func escapePipe(s string) string {
+	return strings.ReplaceAll(s, "|", "\\|")
 }
 
 // readFrontmatter parses the leading YAML frontmatter block as flat

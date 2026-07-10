@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/allank/dialectic/internal/agent"
@@ -61,8 +60,17 @@ func (l *Loop) takeTurn(ctx context.Context, role state.Role) error {
 		}
 		artifactRef = copyPath
 		if statePath != "" {
+			// Load a fresh copy (never mutate l.State) and rewrite
+			// target_artifact to the scratch copy's own path before saving
+			// it into the clean room, so the challenger's scratch state
+			// never reveals the real vault-adjacent artifact path.
+			scratchState, err := state.Load(l.StatePath)
+			if err != nil {
+				return err
+			}
+			scratchState.TargetArtifact = artifactRef
 			stateCopy := filepath.Join(l.ScratchDir, "debate-state.yaml")
-			if err := copyFile(l.StatePath, stateCopy); err != nil {
+			if err := scratchState.Save(stateCopy); err != nil {
 				return err
 			}
 			statePath = stateCopy
@@ -141,12 +149,4 @@ func directivesFor(st *state.DebateState, role state.Role) []state.Directive {
 		}
 	}
 	return out
-}
-
-func copyFile(src, dst string) error {
-	b, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(dst, b, 0o644)
 }

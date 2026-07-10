@@ -148,6 +148,22 @@ entries:
 	if !strings.Contains(turn3.Prompt, filepath.Join(l.ScratchDir, "debate-state.yaml")) {
 		t.Errorf("challenger turn 3 must point at the scratch state copy:\n%s", turn3.Prompt)
 	}
+	// The scratch state copy must NOT leak the real vault-adjacent artifact
+	// path: target_artifact in the copy must be rewritten to the scratch
+	// artifact's own path, never l.ArtifactPath. A raw byte copy of the real
+	// state file would fail this assertion.
+	scratchStatePath := filepath.Join(l.ScratchDir, "debate-state.yaml")
+	scratchState, err := state.Load(scratchStatePath)
+	if err != nil {
+		t.Fatalf("load scratch state copy: %v", err)
+	}
+	if scratchState.TargetArtifact == l.ArtifactPath {
+		t.Errorf("scratch state copy leaks the real vault artifact path: target_artifact=%q", scratchState.TargetArtifact)
+	}
+	wantScratchArtifact := filepath.Join(l.ScratchDir, filepath.Base(l.ArtifactPath))
+	if scratchState.TargetArtifact != wantScratchArtifact {
+		t.Errorf("scratch state target_artifact: want scratch copy path %q, got %q", wantScratchArtifact, scratchState.TargetArtifact)
+	}
 }
 
 func TestInvalidTurnRetriesOnceWithErrorsThenHalts(t *testing.T) {

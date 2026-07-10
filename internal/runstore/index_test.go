@@ -52,3 +52,32 @@ func TestBuildIndexCollectsBriefsAndSortsByCreatedDesc(t *testing.T) {
 		t.Errorf("brief link must be a relative Markdown link:\n%s", table)
 	}
 }
+
+func TestBuildIndexEscapesPipesInCellValues(t *testing.T) {
+	root := t.TempDir()
+	writeBrief(t, filepath.Join(root, "c", "prd-update-brief-3.md"), "changed-course",
+		"scope split into A | B", "2026-07-08", "prd", "round_limit")
+
+	table, err := BuildIndex(root)
+	if err != nil {
+		t.Fatalf("BuildIndex: %v", err)
+	}
+	if strings.Contains(table, "A | B") {
+		t.Errorf("unescaped pipe in cell value breaks table structure:\n%s", table)
+	}
+	if !strings.Contains(table, `A \| B`) {
+		t.Errorf("expected the literal pipe to be escaped as \\|:\n%s", table)
+	}
+	// Every data row (skip header + separator) must have exactly 8 pipes:
+	// 7 columns delimited by 8 `|` characters, with the escaped pipe not
+	// counted as a delimiter.
+	for _, line := range strings.Split(strings.TrimSpace(table), "\n") {
+		if !strings.HasPrefix(line, "| ") || strings.HasPrefix(line, "|---") {
+			continue
+		}
+		unescaped := strings.ReplaceAll(line, `\|`, "")
+		if got := strings.Count(unescaped, "|"); got != 8 {
+			t.Errorf("row has %d unescaped pipe delimiters, want 8: %q", got, line)
+		}
+	}
+}
