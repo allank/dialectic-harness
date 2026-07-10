@@ -139,6 +139,9 @@ func (l *Loop) takeTurn(ctx context.Context, role state.Role) error {
 		newContentions = 0
 	}
 	newConsensus := len(l.State.ConsensusBaseline) - preConsensus
+	if newConsensus < 0 {
+		newConsensus = 0
+	}
 	l.report(progress.Event{
 		Stage: "turn", Turn: turnNum, Round: l.State.RoundCount, MaxRounds: l.State.MaxRounds,
 		Message: fmt.Sprintf("turn %d (%s) complete: %d new contentions, %d resolved to consensus", turnNum, role, newContentions, newConsensus),
