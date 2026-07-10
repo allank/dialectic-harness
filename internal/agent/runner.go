@@ -1,12 +1,14 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 type Request struct {
@@ -96,8 +98,13 @@ func (r *ExecRunner) Invoke(ctx context.Context, req Request) (Result, error) {
 	cmd := exec.CommandContext(ctx, req.Binary, args...)
 	cmd.Dir = req.WorkDir
 	cmd.Env = append(os.Environ(), "DIALECTIC_OUTPUT_FILE="+req.OutputPath)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	stdout, err := cmd.Output()
 	if err != nil {
+		if stderr.Len() > 0 {
+			return Result{}, fmt.Errorf("invoke %s: %w: %s", req.Binary, err, strings.TrimSpace(stderr.String()))
+		}
 		return Result{}, fmt.Errorf("invoke %s: %w", req.Binary, err)
 	}
 	out, err := os.ReadFile(req.OutputPath)

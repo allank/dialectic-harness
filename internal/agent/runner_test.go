@@ -60,6 +60,25 @@ func TestInvokeFailsWhenOutputFileMissing(t *testing.T) {
 	}
 }
 
+func TestInvokeIncludesStderrInErrorOnNonZeroExit(t *testing.T) {
+	dir := t.TempDir()
+	script := "#!/bin/sh\necho 'rate limit exceeded, retry after 30s' >&2\nexit 1\n"
+	stub := filepath.Join(dir, "failing-agent")
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := NewExecRunner()
+	_, err := r.Invoke(context.Background(), Request{
+		Binary: stub, Prompt: "p", WorkDir: t.TempDir(), OutputPath: filepath.Join(t.TempDir(), "turn.yaml"),
+	})
+	if err == nil {
+		t.Fatal("Invoke must fail when the agent exits non-zero")
+	}
+	if !strings.Contains(err.Error(), "rate limit exceeded, retry after 30s") {
+		t.Errorf("error must include the subprocess's stderr for diagnosability, got: %v", err)
+	}
+}
+
 func TestClaudeSpecArgs(t *testing.T) {
 	spec := NewExecRunner().Specs["claude"]
 	got := strings.Join(spec.NewArgs("hello"), " ")
