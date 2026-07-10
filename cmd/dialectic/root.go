@@ -11,6 +11,7 @@ func newRootCmd() *cobra.Command {
 		Short: "Two-agent dialectic harness for PM artifacts",
 		Long:  "dialectic runs a bounded, ledger-backed debate between a clean-room challenger and a vault-context incumbent over a target Markdown artifact.",
 	}
+	root.AddCommand(newDebateCmd())
 	murliCobra.Enable(root)
 	return root
 }
