@@ -12,6 +12,7 @@ func newRootCmd() *cobra.Command {
 		Long:  "dialectic runs a bounded, ledger-backed debate between a clean-room challenger and a vault-context incumbent over a target Markdown artifact.",
 	}
 	root.AddCommand(newDebateCmd())
+	root.AddCommand(newRunsCmd())
 	murliCobra.Enable(root)
 	return root
 }
