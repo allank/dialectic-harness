@@ -14,6 +14,7 @@ import (
 	"github.com/allank/dialectic/internal/agent"
 	"github.com/allank/dialectic/internal/compile"
 	"github.com/allank/dialectic/internal/orchestrate"
+	"github.com/allank/dialectic/internal/progress"
 	"github.com/allank/dialectic/internal/runstore"
 	"github.com/allank/dialectic/internal/state"
 )
@@ -28,6 +29,14 @@ func newDebateCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			w := murliCobra.NewWriter(cmd)
+			reportProgress := func(ev progress.Event) {
+				w.WriteProgress(murli.ProgressEvent{
+					Stage:   ev.Stage,
+					Current: ev.Turn,
+					Total:   ev.MaxRounds * 2,
+					Message: ev.Message,
+				})
+			}
 			artifact, err := filepath.Abs(args[0])
 			if err != nil {
 				return murli.NewUserError("bad artifact path: "+err.Error(), "pass a path to a Markdown file")
@@ -63,6 +72,7 @@ func newDebateCmd() *cobra.Command {
 				TurnsDir:       paths.TurnsDir,
 				Runner:         agent.NewExecRunner(),
 				MaxContentions: maxContentions,
+				Progress:       reportProgress,
 			}
 			outcome, err := loop.Run(cmd.Context())
 			if err != nil {
@@ -75,7 +85,7 @@ func newDebateCmd() *cobra.Command {
 			}
 
 			doc, err := compile.RunCompiler(cmd.Context(), agent.NewExecRunner(), compiler, st,
-				paths.StatePath, filepath.Dir(artifact), filepath.Join(paths.RunDir, "compiler-output.md"))
+				paths.StatePath, filepath.Dir(artifact), filepath.Join(paths.RunDir, "compiler-output.md"), reportProgress)
 			if err != nil {
 				return murli.NewToolError(fmt.Sprintf("%v — compiled summary already written to %s", err, paths.SummaryPath))
 			}

@@ -24,9 +24,10 @@ func TestDebateEndToEndWithStubs(t *testing.T) {
 	t.Setenv("STUB_COUNT_FILE", filepath.Join(t.TempDir(), "count"))
 
 	root := newRootCmd()
-	buf := &bytes.Buffer{}
-	root.SetOut(buf)
-	root.SetErr(buf)
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	root.SetOut(stdout)
+	root.SetErr(stderr)
 	root.SetArgs([]string{"debate", artifact,
 		"--challenger", stubAgent,
 		"--incumbent", stubAgent,
@@ -34,7 +35,19 @@ func TestDebateEndToEndWithStubs(t *testing.T) {
 		"--max-rounds", "2",
 	})
 	if err := root.Execute(); err != nil {
-		t.Fatalf("debate: %v\noutput:\n%s", err, buf.String())
+		t.Fatalf("debate: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+
+	// Progress events land on stderr, one per stage, distinct from the final
+	// JSON result envelope on stdout.
+	if !strings.Contains(stderr.String(), `"stage":"turn"`) {
+		t.Errorf("stderr should contain turn-stage progress events, got:\n%s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), `"stage":"compile"`) {
+		t.Errorf("stderr should contain compile-stage progress events, got:\n%s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "invoking") {
+		t.Errorf("stderr should contain human-readable invoking messages, got:\n%s", stderr.String())
 	}
 
 	// Artifact untouched: the debate is read-only.
