@@ -11,6 +11,7 @@ import (
 
 	"github.com/allank/dialectic/internal/agent"
 	"github.com/allank/dialectic/internal/engine"
+	"github.com/allank/dialectic/internal/progress"
 	"github.com/allank/dialectic/internal/state"
 	"github.com/allank/dialectic/internal/turn"
 )
@@ -25,6 +26,15 @@ type Loop struct {
 	TurnsDir       string
 	Runner         agent.Runner
 	MaxContentions int
+	Progress       progress.Func // optional; nil is a no-op
+}
+
+// report calls l.Progress if set. Every emit site in this file goes through
+// report rather than nil-checking l.Progress directly.
+func (l *Loop) report(ev progress.Event) {
+	if l.Progress != nil {
+		l.Progress(ev)
+	}
 }
 
 func (l *Loop) Run(ctx context.Context) (string, error) {
@@ -86,12 +96,24 @@ func (l *Loop) takeTurn(ctx context.Context, role state.Role) error {
 		Directives:     directivesFor(l.State, role),
 	}
 
+	l.report(progress.Event{
+		Stage: "turn", Turn: turnNum, Round: l.State.RoundCount, MaxRounds: l.State.MaxRounds,
+		Message: fmt.Sprintf("invoking %s (turn %d)", role, turnNum),
+	})
 	tf, sessionID, errs, err := l.invokeAndValidate(ctx, role, in)
 	if err != nil {
 		return err
 	}
 	if len(errs) > 0 {
+		l.report(progress.Event{
+			Stage: "turn", Turn: turnNum, Round: l.State.RoundCount, MaxRounds: l.State.MaxRounds,
+			Message: fmt.Sprintf("turn %d (%s): validation failed — retrying with feedback", turnNum, role),
+		})
 		in.RetryErrors = errs
+		l.report(progress.Event{
+			Stage: "turn", Turn: turnNum, Round: l.State.RoundCount, MaxRounds: l.State.MaxRounds,
+			Message: fmt.Sprintf("invoking %s (turn %d, retry)", role, turnNum),
+		})
 		tf, sessionID, errs, err = l.invokeAndValidate(ctx, role, in)
 		if err != nil {
 			return err
@@ -107,9 +129,20 @@ func (l *Loop) takeTurn(ctx context.Context, role state.Role) error {
 	if sessionID != "" {
 		l.State.Sessions[role] = sessionID
 	}
+	preActive := len(l.State.ActiveContentions)
+	preConsensus := len(l.State.ConsensusBaseline)
 	if err := engine.Merge(l.State, tf); err != nil {
 		return err
 	}
+	newContentions := len(l.State.ActiveContentions) - preActive
+	if newContentions < 0 {
+		newContentions = 0
+	}
+	newConsensus := len(l.State.ConsensusBaseline) - preConsensus
+	l.report(progress.Event{
+		Stage: "turn", Turn: turnNum, Round: l.State.RoundCount, MaxRounds: l.State.MaxRounds,
+		Message: fmt.Sprintf("turn %d (%s) complete: %d new contentions, %d resolved to consensus", turnNum, role, newContentions, newConsensus),
+	})
 	return l.State.Save(l.StatePath)
 }
 

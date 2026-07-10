@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/allank/dialectic/internal/agent"
+	"github.com/allank/dialectic/internal/progress"
 	"github.com/allank/dialectic/internal/state"
 )
 
@@ -204,6 +205,70 @@ entries:
 	}
 	if reason != "consensus" {
 		t.Errorf("reason: want consensus, got %s", reason)
+	}
+}
+
+func TestRunReportsProgressForEachTurn(t *testing.T) {
+	r := &scriptedRunner{payloads: []string{openingPayload, concurPayload}}
+	l := newTestLoop(t, r)
+	var events []progress.Event
+	l.Progress = func(ev progress.Event) { events = append(events, ev) }
+
+	_, err := l.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	want := []string{
+		"invoking challenger (turn 1)",
+		"turn 1 (challenger) complete: 1 new contentions, 0 resolved to consensus",
+		"invoking incumbent (turn 2)",
+		"turn 2 (incumbent) complete: 0 new contentions, 1 resolved to consensus",
+	}
+	if len(events) != len(want) {
+		t.Fatalf("event count: want %d, got %d: %+v", len(want), len(events), events)
+	}
+	for i, w := range want {
+		if events[i].Message != w {
+			t.Errorf("event %d: want %q, got %q", i, w, events[i].Message)
+		}
+		if events[i].Stage != "turn" {
+			t.Errorf("event %d: want stage \"turn\", got %q", i, events[i].Stage)
+		}
+	}
+}
+
+func TestRunReportsProgressForRetry(t *testing.T) {
+	missingRationale := `agent: challenger
+entries:
+  - stance: new
+    issue: "x"
+`
+	r := &scriptedRunner{payloads: []string{missingRationale, openingPayload, concurPayload}}
+	l := newTestLoop(t, r)
+	var events []progress.Event
+	l.Progress = func(ev progress.Event) { events = append(events, ev) }
+
+	_, err := l.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	want := []string{
+		"invoking challenger (turn 1)",
+		"turn 1 (challenger): validation failed — retrying with feedback",
+		"invoking challenger (turn 1, retry)",
+		"turn 1 (challenger) complete: 1 new contentions, 0 resolved to consensus",
+		"invoking incumbent (turn 2)",
+		"turn 2 (incumbent) complete: 0 new contentions, 1 resolved to consensus",
+	}
+	if len(events) != len(want) {
+		t.Fatalf("event count: want %d, got %d: %+v", len(want), len(events), events)
+	}
+	for i, w := range want {
+		if events[i].Message != w {
+			t.Errorf("event %d: want %q, got %q", i, w, events[i].Message)
+		}
 	}
 }
 
