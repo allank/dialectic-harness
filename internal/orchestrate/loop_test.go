@@ -190,3 +190,24 @@ entries:
 		t.Errorf("reason: want consensus, got %s", reason)
 	}
 }
+
+func TestHaltStateSaveFailureIsSurfaced(t *testing.T) {
+	missingRationale := `agent: challenger
+entries:
+  - stance: new
+    issue: "x"
+`
+	r := &scriptedRunner{payloads: []string{missingRationale, missingRationale}}
+	l := newTestLoop(t, r)
+	// Point StatePath at a directory that doesn't exist so the save-on-halt
+	// write fails; the returned error must say so rather than silently
+	// claiming "state preserved".
+	l.StatePath = filepath.Join(l.ScratchDir, "no-such-dir", "debate-state.yaml")
+	_, err := l.Run(context.Background())
+	if !errors.Is(err, ErrHalted) {
+		t.Fatalf("want ErrHalted, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "state save also failed") {
+		t.Errorf("error must surface the save failure, got: %v", err)
+	}
+}

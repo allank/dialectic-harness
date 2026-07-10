@@ -89,7 +89,9 @@ func (l *Loop) takeTurn(ctx context.Context, role state.Role) error {
 			return err
 		}
 		if len(errs) > 0 {
-			_ = l.State.Save(l.StatePath)
+			if serr := l.State.Save(l.StatePath); serr != nil {
+				return fmt.Errorf("%w: turn %d (%s): %v (state save also failed: %v)", ErrHalted, turnNum, role, errs, serr)
+			}
 			return fmt.Errorf("%w: turn %d (%s): %v", ErrHalted, turnNum, role, errs)
 		}
 	}
@@ -112,7 +114,9 @@ func (l *Loop) invokeAndValidate(ctx context.Context, role state.Role, in agent.
 		OutputPath: in.TurnFilePath,
 	})
 	if err != nil {
-		_ = l.State.Save(l.StatePath)
+		if serr := l.State.Save(l.StatePath); serr != nil {
+			return turn.File{}, "", nil, fmt.Errorf("agent invocation failed AND state save also failed: %w (save error: %v)", err, serr)
+		}
 		return turn.File{}, "", nil, fmt.Errorf("agent invocation failed (state preserved): %w", err)
 	}
 	tf, perr := turn.Parse(res.Output)
