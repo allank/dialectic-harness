@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/allank/dialectic/internal/state"
+	"gopkg.in/yaml.v3"
 )
 
 const timestampLayout = "20060102T150405"
@@ -22,7 +23,11 @@ func Slug(artifactPath string) string {
 	base := filepath.Base(artifactPath)
 	base = strings.TrimSuffix(base, filepath.Ext(base))
 	s := nonAlnum.ReplaceAllString(strings.ToLower(base), "-")
-	return strings.Trim(s, "-")
+	s = strings.Trim(s, "-")
+	if s == "" {
+		return "run"
+	}
+	return s
 }
 
 type RunPaths struct {
@@ -56,7 +61,23 @@ func NewRun(artifactPath string, now time.Time) (RunPaths, error) {
 }
 
 func WriteSummary(p RunPaths, summary string) error {
-	return os.WriteFile(p.SummaryPath, []byte(summary), 0o644)
+	if err := os.WriteFile(p.SummaryPath, []byte(summary), 0o644); err != nil {
+		return fmt.Errorf("write summary: %w", err)
+	}
+	return nil
+}
+
+// briefFrontmatter is the YAML frontmatter prepended to an update brief.
+// Marshaled via yaml.Marshal so that scalars needing quoting (colons,
+// quotes, leading/trailing whitespace, etc.) are escaped correctly.
+type briefFrontmatter struct {
+	ArbiterVerdict string `yaml:"arbiter_verdict"`
+	VerdictWhy     string `yaml:"verdict_why"`
+	TopicSlug      string `yaml:"topic_slug"`
+	TargetArtifact string `yaml:"target_artifact"`
+	Outcome        string `yaml:"outcome"`
+	RunDir         string `yaml:"run_dir"`
+	Created        string `yaml:"created"`
 }
 
 // WriteUpdateBrief writes the narrative + update brief as one note with the
@@ -66,16 +87,22 @@ func WriteUpdateBrief(p RunPaths, st *state.DebateState, compilerDoc, outcome st
 	if err != nil {
 		relRun = p.RunDir
 	}
-	fm := fmt.Sprintf(`---
-arbiter_verdict: pending
-verdict_why: ""
-topic_slug: %s
-target_artifact: %s
-outcome: %s
-run_dir: %s
-created: %s
----
-
-`, st.TopicSlug, filepath.Base(st.TargetArtifact), outcome, relRun, now.Format("2006-01-02"))
-	return os.WriteFile(p.BriefPath, []byte(fm+compilerDoc), 0o644)
+	fm := briefFrontmatter{
+		ArbiterVerdict: "pending",
+		VerdictWhy:     "",
+		TopicSlug:      st.TopicSlug,
+		TargetArtifact: filepath.Base(st.TargetArtifact),
+		Outcome:        outcome,
+		RunDir:         relRun,
+		Created:        now.Format("2006-01-02"),
+	}
+	fmBytes, err := yaml.Marshal(fm)
+	if err != nil {
+		return fmt.Errorf("marshal brief frontmatter: %w", err)
+	}
+	doc := "---\n" + string(fmBytes) + "---\n\n" + compilerDoc
+	if err := os.WriteFile(p.BriefPath, []byte(doc), 0o644); err != nil {
+		return fmt.Errorf("write update brief: %w", err)
+	}
+	return nil
 }
