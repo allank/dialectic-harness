@@ -8,6 +8,10 @@ A two-agent clean-room debate harness for detecting context-anchoring bias in AI
 go build -o dialectic ./cmd/dialectic
 ```
 
+## Prerequisites
+
+`dialectic` invokes `claude` and `agy` as subprocesses to run each debate turn. Both must be installed, authenticated, and resolvable on `PATH` before running `dialectic debate` (or pass `--challenger`/`--incumbent`/`--compiler` with explicit paths to the binaries).
+
 ## Usage
 
 ```
