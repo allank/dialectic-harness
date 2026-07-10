@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/allank/dialectic/internal/agent"
+	"github.com/allank/dialectic/internal/progress"
 	"github.com/allank/dialectic/internal/state"
 )
 
@@ -36,9 +37,15 @@ func BuildCompilerPrompt(st *state.DebateState, statePath, outPath string, retry
 
 // RunCompiler invokes the compiler binary sessionless, validates citation
 // integrity deterministically, retries once with errors, then fails.
-func RunCompiler(ctx context.Context, r agent.Runner, binary string, st *state.DebateState, statePath, workDir, outPath string) (string, error) {
+func RunCompiler(ctx context.Context, r agent.Runner, binary string, st *state.DebateState,
+	statePath, workDir, outPath string, report progress.Func) (string, error) {
 	var retryErrors []string
 	for attempt := 0; attempt < 2; attempt++ {
+		if attempt == 0 {
+			reportCompile(report, "invoking compiler ("+binary+")")
+		} else {
+			reportCompile(report, "compiler output failed citation validation — retrying with feedback")
+		}
 		res, err := r.Invoke(ctx, agent.Request{
 			Binary:     binary,
 			Prompt:     BuildCompilerPrompt(st, statePath, outPath, retryErrors),
@@ -52,8 +59,15 @@ func RunCompiler(ctx context.Context, r agent.Runner, binary string, st *state.D
 		doc := string(res.Output)
 		retryErrors = ValidateCitations(doc, st)
 		if len(retryErrors) == 0 {
+			reportCompile(report, "compiler complete — citations valid")
 			return doc, nil
 		}
 	}
 	return "", fmt.Errorf("compiler output failed citation validation after retry: %s", strings.Join(retryErrors, "; "))
+}
+
+func reportCompile(report progress.Func, message string) {
+	if report != nil {
+		report(progress.Event{Stage: "compile", Message: message})
+	}
 }

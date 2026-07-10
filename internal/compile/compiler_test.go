@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/allank/dialectic/internal/agent"
+	"github.com/allank/dialectic/internal/progress"
 )
 
 type cannedRunner struct {
@@ -32,7 +33,7 @@ func (c *cannedRunner) Invoke(_ context.Context, req agent.Request) (agent.Resul
 func TestRunCompilerAcceptsValidDoc(t *testing.T) {
 	r := &cannedRunner{payloads: []string{validCompilerDoc}}
 	out := filepath.Join(t.TempDir(), "brief-body.md")
-	doc, err := RunCompiler(context.Background(), r, "claude", summaryFixture(), "/runs/debate-state.yaml", t.TempDir(), out)
+	doc, err := RunCompiler(context.Background(), r, "claude", summaryFixture(), "/runs/debate-state.yaml", t.TempDir(), out, nil)
 	if err != nil {
 		t.Fatalf("RunCompiler: %v", err)
 	}
@@ -53,7 +54,7 @@ func TestRunCompilerRetriesOnceThenFails(t *testing.T) {
 	bad := "## Narrative\n\nno citations here\n"
 	r := &cannedRunner{payloads: []string{bad, bad}}
 	out := filepath.Join(t.TempDir(), "brief-body.md")
-	_, err := RunCompiler(context.Background(), r, "claude", summaryFixture(), "state.yaml", t.TempDir(), out)
+	_, err := RunCompiler(context.Background(), r, "claude", summaryFixture(), "state.yaml", t.TempDir(), out, nil)
 	if err == nil {
 		t.Fatal("want error after failed retry")
 	}
@@ -62,5 +63,49 @@ func TestRunCompilerRetriesOnceThenFails(t *testing.T) {
 	}
 	if !strings.Contains(r.requests[1].Prompt, "missing required section") {
 		t.Errorf("retry prompt must include validation errors:\n%s", r.requests[1].Prompt)
+	}
+}
+
+func TestRunCompilerReportsProgressOnSuccess(t *testing.T) {
+	r := &cannedRunner{payloads: []string{validCompilerDoc}}
+	out := filepath.Join(t.TempDir(), "brief-body.md")
+	var events []progress.Event
+	_, err := RunCompiler(context.Background(), r, "claude", summaryFixture(), "/runs/debate-state.yaml", t.TempDir(), out,
+		func(ev progress.Event) { events = append(events, ev) })
+	if err != nil {
+		t.Fatalf("RunCompiler: %v", err)
+	}
+	want := []string{"invoking compiler (claude)", "compiler complete — citations valid"}
+	if len(events) != len(want) {
+		t.Fatalf("event count: want %d, got %d: %+v", len(want), len(events), events)
+	}
+	for i, w := range want {
+		if events[i].Message != w {
+			t.Errorf("event %d: want %q, got %q", i, w, events[i].Message)
+		}
+		if events[i].Stage != "compile" {
+			t.Errorf("event %d: want stage \"compile\", got %q", i, events[i].Stage)
+		}
+	}
+}
+
+func TestRunCompilerReportsProgressOnRetryThenFail(t *testing.T) {
+	bad := "## Narrative\n\nno citations here\n"
+	r := &cannedRunner{payloads: []string{bad, bad}}
+	out := filepath.Join(t.TempDir(), "brief-body.md")
+	var events []progress.Event
+	_, err := RunCompiler(context.Background(), r, "claude", summaryFixture(), "state.yaml", t.TempDir(), out,
+		func(ev progress.Event) { events = append(events, ev) })
+	if err == nil {
+		t.Fatal("want error after failed retry")
+	}
+	want := []string{"invoking compiler (claude)", "compiler output failed citation validation — retrying with feedback"}
+	if len(events) != len(want) {
+		t.Fatalf("event count: want %d, got %d: %+v", len(want), len(events), events)
+	}
+	for i, w := range want {
+		if events[i].Message != w {
+			t.Errorf("event %d: want %q, got %q", i, w, events[i].Message)
+		}
 	}
 }
