@@ -15,7 +15,7 @@ go build -o dialectic ./cmd/dialectic
 ## Usage
 
 ```
-dialectic debate <artifact> [--challenger claude] [--incumbent agy] [--compiler claude] [--max-rounds 3] [--max-contentions 5]
+dialectic debate <artifact> [--challenger agy] [--incumbent claude] [--compiler claude] [--max-rounds 3] [--max-contentions 5]
 dialectic runs [dir] [--write]
 ```
 

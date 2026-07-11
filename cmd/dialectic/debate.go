@@ -139,8 +139,8 @@ func newDebateCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&challenger, "challenger", "claude", "binary for the clean-room challenger role")
-	cmd.Flags().StringVar(&incumbent, "incumbent", "agy", "binary for the vault-context incumbent role")
+	cmd.Flags().StringVar(&challenger, "challenger", "agy", "binary for the clean-room challenger role")
+	cmd.Flags().StringVar(&incumbent, "incumbent", "claude", "binary for the vault-context incumbent role")
 	cmd.Flags().StringVar(&compiler, "compiler", "claude", "binary for the sessionless compiler role")
 	cmd.Flags().IntVar(&maxRounds, "max-rounds", 3, "circuit breaker: maximum debate rounds")
 	cmd.Flags().IntVar(&maxContentions, "max-contentions", 5, "cap on opening critique contentions")
