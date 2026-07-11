@@ -20,7 +20,7 @@ status: approved
 - No architecture change. The four elements map exactly onto what the code already generates (see Template Catalog below) — this is a templating-mechanism swap, not a redesign of when/how each piece fires.
 - Directives and the retry-errors block stay non-template, non-overridable — they're dynamically injected facts from live debate state (which contentions, which validation errors), not authored prompt text.
 - No content/semantic validation of override files (e.g. checking an override still contains schema instructions). If an override breaks turn validation, that surfaces through the existing retry-once-then-halt path exactly as a misbehaving agent would today.
-- No change to `internal/orchestrate`, `internal/runstore`, or the `runs` subcommand.
+- No change to `internal/runstore` or the `runs` subcommand. `internal/orchestrate` gets one small, mechanical change (a new `Loop.PromptOverrides` field and updating its one `BuildPrompt` call site to pass it) — this was underspecified above as a contradiction between this line and the Data Flow section, which correctly anticipates it; corrected here rather than left inconsistent.
 
 ## Architecture
 
@@ -135,7 +135,7 @@ ASCII flow diagram (plain ASCII only, no Unicode box-drawing — portable across
 
 ## Data Flow
 
-`BuildPrompt(in PromptInput, overrides map[string]string) string` and `BuildCompilerPrompt(st *state.DebateState, statePath, outPath string, retryErrors []string, overrides map[string]string) string` each resolve, per element they need: `text, ok := overrides[name]; if !ok { text = defaultTemplates[name] }`, then `template.New(name).Funcs(template.FuncMap{"upper": strings.ToUpper}).Parse(text)` and `.Execute(&buf, data)` where `data` is a small anonymous or named struct carrying exactly the variables listed in the Template Catalog for that element. `cmd/dialectic/debate.go` reads any `--override-prompt` flags into a single `map[string]string` (validating names against the catalog at parse time) and passes it through to both `BuildPrompt` (via a small threading change in the orchestrator's prompt-construction path) and `BuildCompilerPrompt`.
+`BuildPrompt(in PromptInput, overrides map[string]string) (string, error)` and `BuildCompilerPrompt(st *state.DebateState, statePath, outPath string, retryErrors []string, overrides map[string]string) (string, error)` — both return `error` now, not just `string`, since a malformed override can fail to parse as a template; the Error Handling section below already requires this failure mode to surface before any LLM call, which is only possible if these functions can return an error. Each resolves, per element it needs: `text, ok := overrides[name]; if !ok { text = defaultTemplates[name] }`, then `template.New(name).Funcs(template.FuncMap{"upper": strings.ToUpper}).Parse(text)` and `.Execute(&buf, data)` where `data` is a small anonymous or named struct carrying exactly the variables listed in the Template Catalog for that element. `cmd/dialectic/debate.go` reads any `--override-prompt` flags into a single `map[string]string` (validating names against the catalog at parse time) and passes it through to both `BuildPrompt` (via a small threading change in the orchestrator's prompt-construction path) and `BuildCompilerPrompt`.
 
 ## Error Handling
 
