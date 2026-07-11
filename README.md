@@ -18,7 +18,7 @@ go build -o dialectic ./cmd/dialectic
 dialectic [command] [flags]
 ```
 
-Every command supports `--agent` (force machine-readable JSON regardless of TTY), `--output json|ndjson|text` (explicit format override), `--schema` (print the command's machine-readable flag/subcommand schema instead of running it), `--protocol-version` (envelope version negotiation, currently `0.2`), and `--profile <name>` (load a saved flag profile) — inherited from the [murli](https://murli.allankent.com/lang/go) CLI framework this binary is built on. In a real terminal, output renders as human-readable text; piped or redirected, it auto-detects and switches to JSON.
+Every command supports `--agent` (force machine-readable JSON regardless of TTY), `--output json|ndjson|text` (explicit format override), `--schema` (print the command's machine-readable flag/subcommand schema instead of running it), and `--protocol-version` (envelope version negotiation, currently `0.2`) — inherited from the [murli](https://murli.allankent.com/lang/go) CLI framework this binary is built on. In a real terminal, output renders as human-readable text; piped or redirected, it auto-detects and switches to JSON.
 
 ### `debate` — run the harness
 
@@ -47,6 +47,28 @@ dialectic prompts
 
 Prints the ASCII debate-flow diagram and all four built-in prompt templates (`opening_critique`, `turn`, `schema`, `compiler`) raw, with placeholders visible — the binary documents its own behavior. Read-only, no artifact required. Use this to see the exact template text before overriding one with `debate --override-prompt`.
 
+#### Overriding prompts
+
+Extract a template's exact default text with `dialectic prompts`, edit a copy, then point `debate` at it with `--override-prompt <name>=<path>`. Unlisted elements keep using their built-in default — an override replaces one template, not the whole prompt.
+
+Pull the `turn` template out to a file and tweak it (`jq` reads the JSON envelope's `result.templates.<name>` field):
+
+```
+dialectic prompts --output json | jq -r '.result.templates.turn' > my-turn.tmpl
+# edit my-turn.tmpl, e.g. add a house rule about citing line numbers
+dialectic debate <artifact> --override-prompt turn=my-turn.tmpl
+```
+
+`--override-prompt` is repeatable, so multiple elements can be overridden in the same run:
+
+```
+dialectic debate <artifact> \
+  --override-prompt turn=my-turn.tmpl \
+  --override-prompt schema=my-schema.tmpl
+```
+
+The four valid names are `opening_critique`, `turn`, `schema`, and `compiler` — `debate` rejects any other name before invoking an agent. `schema` is the YAML contract the turn parser depends on (`internal/turn/turn.go`'s strict decoder rejects unknown fields); an override that drops a required field or renames a key will make every subsequent turn fail validation, not fail loudly up front — test a schema override against a short, disposable run first.
+
 ### `runs` — regenerate the kill-criterion index
 
 ```
@@ -62,14 +84,6 @@ dialectic describe [--agents-md]
 ```
 
 Prints the full command tree, flags, and capabilities as a single JSON document — lets an orchestrating agent discover what this binary can do without parsing `--help` text. Pass `--agents-md` to generate an `AGENTS.md` stub instead.
-
-### `profile` — saved flag profiles
-
-```
-dialectic profile save|list|show|use|delete <name>
-```
-
-Framework-provided flag-profile management (from murli). Not currently wired up for any dialectic-specific flag — `dialectic profile save` will report "no profileable flags were set" until a flag is explicitly marked profileable in the code.
 
 ### `completion`
 
