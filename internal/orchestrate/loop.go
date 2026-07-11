@@ -19,14 +19,15 @@ import (
 var ErrHalted = errors.New("run halted: invalid turn file after retry (state preserved)")
 
 type Loop struct {
-	State          *state.DebateState
-	StatePath      string
-	ArtifactPath   string
-	ScratchDir     string // challenger clean-room cwd
-	TurnsDir       string
-	Runner         agent.Runner
-	MaxContentions int
-	Progress       progress.Func // optional; nil is a no-op
+	State           *state.DebateState
+	StatePath       string
+	ArtifactPath    string
+	ScratchDir      string // challenger clean-room cwd
+	TurnsDir        string
+	Runner          agent.Runner
+	MaxContentions  int
+	Progress        progress.Func     // optional; nil is a no-op
+	PromptOverrides map[string]string // optional; nil uses agent's built-in defaults
 }
 
 // report calls l.Progress if set. Every emit site in this file goes through
@@ -150,7 +151,7 @@ func (l *Loop) takeTurn(ctx context.Context, role state.Role) error {
 }
 
 func (l *Loop) invokeAndValidate(ctx context.Context, role state.Role, in agent.PromptInput) (turn.File, string, []string, error) {
-	prompt, err := agent.BuildPrompt(in, nil)
+	prompt, err := agent.BuildPrompt(in, l.PromptOverrides)
 	if err != nil {
 		return turn.File{}, "", nil, fmt.Errorf("build prompt: %w", err)
 	}

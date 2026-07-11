@@ -116,3 +116,84 @@ func TestDebateRejectsMissingArtifact(t *testing.T) {
 		t.Errorf("stderr should mention the missing artifact, got:\n%s", errBuf.String())
 	}
 }
+
+func TestDebateOverridePromptChangesAgentInput(t *testing.T) {
+	wd, _ := os.Getwd()
+	captureStub := filepath.Join(wd, "testdata", "stub-capture-challenger.sh")
+	incumbentStub := filepath.Join(wd, "testdata", "stub-concur-incumbent.sh")
+	compilerStub := filepath.Join(wd, "testdata", "stub-compiler.sh")
+
+	dir := t.TempDir()
+	artifact := filepath.Join(dir, "Test PRD.md")
+	if err := os.WriteFile(artifact, []byte("# Test PRD\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	captureFile := filepath.Join(t.TempDir(), "captured-prompt.txt")
+	t.Setenv("PROMPT_CAPTURE_FILE", captureFile)
+
+	overrideFile := filepath.Join(t.TempDir(), "override-opening-critique.txt")
+	overrideText := "CUSTOM OVERRIDE MARKER: raise your concerns about this document."
+	if err := os.WriteFile(overrideFile, []byte(overrideText), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	root := newRootCmd()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	root.SetArgs([]string{"debate", artifact,
+		"--challenger", captureStub,
+		"--incumbent", incumbentStub,
+		"--compiler", compilerStub,
+		"--max-rounds", "1",
+		"--override-prompt", "opening_critique=" + overrideFile,
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("debate: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+
+	captured, err := os.ReadFile(captureFile)
+	if err != nil {
+		t.Fatalf("read captured prompt: %v", err)
+	}
+	if !strings.Contains(string(captured), "CUSTOM OVERRIDE MARKER") {
+		t.Errorf("challenger's prompt must contain the override text, got:\n%s", captured)
+	}
+	if strings.Contains(string(captured), "You have no prior context") {
+		t.Errorf("challenger's prompt must NOT contain the built-in default text when overridden, got:\n%s", captured)
+	}
+}
+
+func TestDebateRejectsUnknownOverridePromptName(t *testing.T) {
+	origExit := murli.ExitFunc
+	var capturedExit int
+	murli.ExitFunc = func(code int) { capturedExit = code }
+	defer func() { murli.ExitFunc = origExit }()
+
+	dir := t.TempDir()
+	artifact := filepath.Join(dir, "Test.md")
+	if err := os.WriteFile(artifact, []byte("# Test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	overrideFile := filepath.Join(t.TempDir(), "override.txt")
+	if err := os.WriteFile(overrideFile, []byte("text"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	root := newRootCmd()
+	errBuf := &bytes.Buffer{}
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(errBuf)
+	root.SetArgs([]string{"debate", artifact, "--override-prompt", "bogus_name=" + overrideFile})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if capturedExit != murli.ExitUserError {
+		t.Errorf("exit code: want %d (ExitUserError), got %d\nstderr:\n%s", murli.ExitUserError, capturedExit, errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), "unknown prompt name") {
+		t.Errorf("stderr should mention unknown prompt name, got:\n%s", errBuf.String())
+	}
+}
