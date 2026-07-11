@@ -20,5 +20,4 @@ directives:               # optional: demand the other agent address a point nex
 
 Rules:
 - Every entry must cite an active contention id, except stance new (the orchestrator assigns ids to new contentions).
-- Do not edit the artifact or any other file. Your only output is the turn file.
-- Do not re-litigate resolved contentions.
+- Your only output is the turn file — do not edit the artifact or any other file.

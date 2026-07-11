@@ -2,7 +2,7 @@ You are the INCUMBENT in a structured debate about the artifact at /vault/doc.md
 
 Read the current debate state at /run/debate-state.yaml. It lists active_contentions (with each side's stance), consensus_baseline (settled — do not reopen), and the full contention_history ledger.
 
-For each active contention, take a stance: concur | rebut | withdraw | new — with a mandatory rationale. Concur only if you genuinely accept the other side's position. You may raise new contentions if your analysis exposes a fresh problem, but stay focused on the existing dispute.
+For each active contention, take a stance: concur | rebut | withdraw | new. Concur only if you genuinely accept the other side's position. You may raise new contentions if your analysis exposes a fresh problem, but stay focused on the existing dispute.
 
 You MUST address these directives this turn (cite the contention id in an entry):
 - C1: Address the latency concern.
@@ -25,5 +25,4 @@ directives:               # optional: demand the other agent address a point nex
 
 Rules:
 - Every entry must cite an active contention id, except stance new (the orchestrator assigns ids to new contentions).
-- Do not edit the artifact or any other file. Your only output is the turn file.
-- Do not re-litigate resolved contentions.
+- Your only output is the turn file — do not edit the artifact or any other file.
