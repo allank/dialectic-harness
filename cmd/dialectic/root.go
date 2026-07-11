@@ -13,6 +13,7 @@ func newRootCmd() *cobra.Command {
 	}
 	root.AddCommand(newDebateCmd())
 	root.AddCommand(newRunsCmd())
+	root.AddCommand(newPromptsCmd())
 	murliCobra.Enable(root)
 	return root
 }
