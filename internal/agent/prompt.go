@@ -6,6 +6,7 @@ package agent
 import (
 	"fmt"
 	"strings"
+	"text/template"
 
 	"github.com/allank/dialectic/internal/state"
 )
@@ -20,49 +21,79 @@ type PromptInput struct {
 	RetryErrors    []string          // non-empty on the single validation retry
 }
 
-const turnFileSchemaBlock = `Write your turn as a YAML file at the exact path given above, with this schema and nothing else:
+type templateData struct {
+	Role           string
+	ArtifactPath   string
+	StatePath      string
+	MaxContentions int
+}
 
-agent: %s
-entries:
-  - contention: C1        # id of an active contention; OMIT for stance new
-    stance: rebut         # one of: concur | rebut | withdraw | new
-    rationale: "why"      # mandatory on every entry; bare concessions are invalid
-    position: "your current position in one sentence (optional, for concur/rebut/withdraw)"
-    issue: "one-line issue statement"   # required only for stance: new
-    severity: high        # optional, for stance: new (high|medium|low)
-directives:               # optional: demand the other agent address a point next turn
-  - contention: C1
-    directive: "what they must address"
+// BuildPrompt renders the prompt for one agent turn. overrides maps a
+// template name (opening_critique | turn | schema) to raw template text
+// that takes precedence over the embedded default for that element only;
+// a nil or empty map (or a map missing a given name) uses the default.
+func BuildPrompt(in PromptInput, overrides map[string]string) (string, error) {
+	data := templateData{
+		Role:           string(in.Role),
+		ArtifactPath:   in.ArtifactPath,
+		StatePath:      in.StatePath,
+		MaxContentions: in.MaxContentions,
+	}
 
-Rules:
-- Every entry must cite an active contention id, except stance new (the orchestrator assigns ids to new contentions).
-- Do not edit the artifact or any other file. Your only output is the turn file.
-- Do not re-litigate resolved contentions.`
-
-func BuildPrompt(in PromptInput) string {
-	var b strings.Builder
+	framingName := "turn"
 	if in.Role == state.RoleChallenger && in.StatePath == "" {
-		fmt.Fprintf(&b, "You are the CHALLENGER in a structured debate about a document. You have no prior context on it — that is deliberate. Read the artifact at %s with fresh eyes.\n\n", in.ArtifactPath)
-		fmt.Fprintf(&b, "Produce an Opening Critique: raise at most %d contentions — the strongest problems with the artifact, ranked by severity. Every entry uses stance: new.\n\n", in.MaxContentions)
-	} else {
-		fmt.Fprintf(&b, "You are the %s in a structured debate about the artifact at %s.\n\n", strings.ToUpper(string(in.Role)), in.ArtifactPath)
-		fmt.Fprintf(&b, "Read the current debate state at %s. It lists active_contentions (with each side's stance), consensus_baseline (settled — do not reopen), and the full contention_history ledger.\n\n", in.StatePath)
-		b.WriteString("For each active contention, take a stance: concur | rebut | withdraw | new — with a mandatory rationale. Concur only if you genuinely accept the other side's position. You may raise new contentions if your analysis exposes a fresh problem, but stay focused on the existing dispute.\n\n")
+		framingName = "opening_critique"
 	}
+	framing, err := renderNamed(framingName, overrides, data)
+	if err != nil {
+		return "", err
+	}
+
+	pieces := []string{strings.TrimSpace(framing)}
+
 	if len(in.Directives) > 0 {
-		b.WriteString("You MUST address these directives this turn (cite the contention id in an entry):\n")
+		var db strings.Builder
+		db.WriteString("You MUST address these directives this turn (cite the contention id in an entry):\n")
 		for _, d := range in.Directives {
-			fmt.Fprintf(&b, "- %s: %s\n", d.Contention, d.Directive)
+			fmt.Fprintf(&db, "- %s: %s\n", d.Contention, d.Directive)
 		}
-		b.WriteString("\n")
+		pieces = append(pieces, strings.TrimSpace(db.String()))
 	}
-	fmt.Fprintf(&b, "Turn file path: %s\n\n", in.TurnFilePath)
-	fmt.Fprintf(&b, turnFileSchemaBlock, in.Role)
+
+	pieces = append(pieces, fmt.Sprintf("Turn file path: %s", in.TurnFilePath))
+
+	schema, err := renderNamed("schema", overrides, data)
+	if err != nil {
+		return "", err
+	}
+	pieces = append(pieces, strings.TrimSpace(schema))
+
+	result := strings.Join(pieces, "\n\n")
+
 	if len(in.RetryErrors) > 0 {
-		b.WriteString("\n\nYour previous turn file was INVALID. Fix these errors and rewrite the complete turn file at the same path:\n")
+		var rb strings.Builder
+		rb.WriteString("Your previous turn file was INVALID. Fix these errors and rewrite the complete turn file at the same path:\n")
 		for _, e := range in.RetryErrors {
-			fmt.Fprintf(&b, "- %s\n", e)
+			fmt.Fprintf(&rb, "- %s\n", e)
 		}
+		result += "\n\n" + rb.String()
 	}
-	return b.String()
+
+	return result, nil
+}
+
+func renderNamed(name string, overrides map[string]string, data templateData) (string, error) {
+	text, ok := overrides[name]
+	if !ok {
+		text = defaultTemplates[name]
+	}
+	tmpl, err := template.New(name).Funcs(template.FuncMap{"upper": strings.ToUpper}).Parse(text)
+	if err != nil {
+		return "", fmt.Errorf("parse %s template: %w", name, err)
+	}
+	var buf strings.Builder
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("render %s template: %w", name, err)
+	}
+	return buf.String(), nil
 }

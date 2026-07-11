@@ -43,9 +43,13 @@ var goldenCases = []struct {
 
 // TestUpdateGolden captures BuildPrompt's output for goldenCases into
 // internal/agent/testdata/<name>.golden.txt. Run once, with UPDATE_GOLDEN=1,
-// BEFORE refactoring BuildPrompt in Step 4 — it must run against today's
-// fmt.Sprintf-based implementation so the fixtures are proof of current
-// behavior, not a copy of the new implementation's output.
+// against today's implementation before any template refactor, to prove the
+// fixtures reflect real behavior rather than a copy of a new implementation's
+// output. The original capture (pre-refactor, single-return BuildPrompt) is
+// preserved in the "test: capture BuildPrompt golden fixtures before
+// templating refactor" commit; this call is updated post-refactor to the
+// new two-return signature so the package keeps compiling and the fixtures
+// can still be regenerated deliberately in the future.
 func TestUpdateGolden(t *testing.T) {
 	if os.Getenv("UPDATE_GOLDEN") == "" {
 		t.Skip("set UPDATE_GOLDEN=1 to regenerate")
@@ -54,7 +58,10 @@ func TestUpdateGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range goldenCases {
-		got := BuildPrompt(tc.in)
+		got, err := BuildPrompt(tc.in, nil)
+		if err != nil {
+			t.Fatalf("BuildPrompt: %v", err)
+		}
 		path := filepath.Join("testdata", tc.name+".golden.txt")
 		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
 			t.Fatalf("write golden %s: %v", path, err)

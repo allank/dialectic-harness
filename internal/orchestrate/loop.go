@@ -150,9 +150,13 @@ func (l *Loop) takeTurn(ctx context.Context, role state.Role) error {
 }
 
 func (l *Loop) invokeAndValidate(ctx context.Context, role state.Role, in agent.PromptInput) (turn.File, string, []string, error) {
+	prompt, err := agent.BuildPrompt(in, nil)
+	if err != nil {
+		return turn.File{}, "", nil, fmt.Errorf("build prompt: %w", err)
+	}
 	res, err := l.Runner.Invoke(ctx, agent.Request{
 		Binary:     l.State.Roles[role],
-		Prompt:     agent.BuildPrompt(in),
+		Prompt:     prompt,
 		WorkDir:    workDirFor(l, role),
 		SessionID:  l.State.Sessions[role],
 		OutputPath: in.TurnFilePath,

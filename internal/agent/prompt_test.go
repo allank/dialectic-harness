@@ -1,72 +1,66 @@
 package agent
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/allank/dialectic/internal/state"
 )
 
-func TestOpeningCritiquePrompt(t *testing.T) {
-	p := BuildPrompt(PromptInput{
-		Role:           state.RoleChallenger,
-		ArtifactPath:   "artifact.md",
-		TurnFilePath:   "/runs/turns/turn-1-challenger.yaml",
-		MaxContentions: 5,
-	})
-	for _, want := range []string{
-		"artifact.md",
-		"/runs/turns/turn-1-challenger.yaml",
-		"at most 5",
-		"stance: new",
-		"Do not edit the artifact",
-		"agent: challenger",
-	} {
-		if !strings.Contains(p, want) {
-			t.Errorf("opening critique prompt missing %q\n---\n%s", want, p)
-		}
-	}
-	if strings.Contains(p, "debate-state") {
-		t.Error("opening critique must not reference prior state — there is none")
+func TestBuildPromptDefaultMatchesGoldenFixtures(t *testing.T) {
+	for _, tc := range goldenCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := BuildPrompt(tc.in, nil)
+			if err != nil {
+				t.Fatalf("BuildPrompt: %v", err)
+			}
+			want, err := os.ReadFile(filepath.Join("testdata", tc.name+".golden.txt"))
+			if err != nil {
+				t.Fatalf("read golden: %v", err)
+			}
+			if got != string(want) {
+				t.Errorf("output diverges from golden fixture (captured from pre-refactor code)\n--- got ---\n%s\n--- want ---\n%s", got, want)
+			}
+		})
 	}
 }
 
-func TestTurnPromptIncludesStatePointerAndDirectives(t *testing.T) {
-	p := BuildPrompt(PromptInput{
-		Role:         state.RoleIncumbent,
-		ArtifactPath: "drafts/zaru.md",
-		StatePath:    "/runs/debate-state.yaml",
-		TurnFilePath: "/runs/turns/turn-2-incumbent.yaml",
-		Directives: []state.Directive{
-			{Target: state.RoleIncumbent, Contention: "C1", Directive: "Provide a latency benchmark.", IssuedTurn: 1},
-		},
-	})
-	for _, want := range []string{
-		"/runs/debate-state.yaml",
-		"drafts/zaru.md",
-		"agent: incumbent",
-		"C1",
-		"Provide a latency benchmark.",
-		"concur | rebut | withdraw | new",
-	} {
-		if !strings.Contains(p, want) {
-			t.Errorf("turn prompt missing %q\n---\n%s", want, p)
-		}
+func TestBuildPromptOverrideTakesPrecedenceOverDefault(t *testing.T) {
+	got, err := BuildPrompt(PromptInput{
+		Role: state.RoleChallenger, ArtifactPath: "/vault/doc.md",
+		TurnFilePath: "/run/turns/turn-1-challenger.yaml", MaxContentions: 5,
+	}, map[string]string{"opening_critique": "CUSTOM: look at {{.ArtifactPath}}."})
+	if err != nil {
+		t.Fatalf("BuildPrompt: %v", err)
+	}
+	if !strings.Contains(got, "CUSTOM: look at /vault/doc.md.") {
+		t.Errorf("override must be rendered with its own placeholders substituted, got:\n%s", got)
+	}
+	if strings.Contains(got, "You have no prior context") {
+		t.Errorf("built-in default text must not appear when overridden, got:\n%s", got)
 	}
 }
 
-func TestRetryPromptFeedsBackSpecificErrors(t *testing.T) {
-	p := BuildPrompt(PromptInput{
-		Role:         state.RoleChallenger,
-		ArtifactPath: "a.md",
-		StatePath:    "/runs/debate-state.yaml",
-		TurnFilePath: "/runs/turns/turn-3-challenger.yaml",
-		RetryErrors:  []string{`entries[0]: rationale is mandatory; bare concessions are invalid`},
-	})
-	if !strings.Contains(p, "rationale is mandatory") {
-		t.Errorf("retry prompt must contain the specific validation error:\n%s", p)
+func TestBuildPromptRejectsMalformedOverride(t *testing.T) {
+	_, err := BuildPrompt(PromptInput{
+		Role: state.RoleChallenger, ArtifactPath: "/vault/doc.md",
+		TurnFilePath: "/run/turns/turn-1-challenger.yaml", MaxContentions: 5,
+	}, map[string]string{"opening_critique": "unclosed {{ .ArtifactPath"})
+	if err == nil {
+		t.Fatal("want an error for a malformed override template, got nil")
 	}
-	if !strings.Contains(p, "rewrite the complete turn file") {
-		t.Errorf("retry prompt must ask for a full rewrite:\n%s", p)
+}
+
+func TestDefaultTemplatesHasAllThreeNames(t *testing.T) {
+	tmpls := DefaultTemplates()
+	for _, name := range []string{"opening_critique", "turn", "schema"} {
+		if _, ok := tmpls[name]; !ok {
+			t.Errorf("DefaultTemplates() missing %q", name)
+		}
+	}
+	if len(tmpls) != 3 {
+		t.Errorf("DefaultTemplates(): want exactly 3 entries, got %d: %v", len(tmpls), tmpls)
 	}
 }
