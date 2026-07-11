@@ -56,17 +56,13 @@ func newPromptsCmd() *cobra.Command {
 			var human strings.Builder
 			human.WriteString(promptFlowDiagram)
 			human.WriteString("\n\n")
-
-			// Build formatted templates for structured output (includes headers)
-			templatesFormatted := make(map[string]string)
 			for _, name := range promptCatalogOrder {
 				fmt.Fprintf(&human, "=== %s ===\n%s\n\n", name, templates[name])
-				templatesFormatted[name] = fmt.Sprintf("=== %s ===\n%s", name, templates[name])
 			}
 
 			w.WriteSuccess(strings.TrimRight(human.String(), "\n"), map[string]any{
 				"diagram":   promptFlowDiagram,
-				"templates": templatesFormatted,
+				"templates": templates,
 			})
 			return nil
 		},

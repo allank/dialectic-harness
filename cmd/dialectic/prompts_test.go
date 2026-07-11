@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/allank/dialectic/internal/agent"
+	"github.com/allank/dialectic/internal/compile"
 )
 
 func TestPromptsCommandHumanOutput(t *testing.T) {
@@ -12,7 +15,13 @@ func TestPromptsCommandHumanOutput(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	root.SetOut(stdout)
 	root.SetErr(&bytes.Buffer{})
-	root.SetArgs([]string{"prompts"})
+	// --output text forces the writer's human-text branch (WriteSuccess's
+	// humanText argument) regardless of stdout being a bytes.Buffer rather
+	// than a real TTY. Without this, murliCobra.NewWriter's TTY detection
+	// (isTerminal checks for *os.File) is always false against a
+	// bytes.Buffer, so plain "prompts" would silently hit the same JSON
+	// branch as --agent and never exercise the human-readable render path.
+	root.SetArgs([]string{"prompts", "--output", "text"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("prompts: %v", err)
 	}
@@ -56,5 +65,19 @@ func TestPromptsCommandAgentOutput(t *testing.T) {
 	}
 	if len(envelope.Result.Templates) != 4 {
 		t.Errorf("agent-mode payload: want exactly 4 templates, got %d: %v", len(envelope.Result.Templates), envelope.Result.Templates)
+	}
+
+	// The structured payload must carry the raw template text — unmodified,
+	// with no "=== name ===" header prepended — so an agent can write
+	// envelope.Result.Templates["opening_critique"] straight to a file for
+	// --override-prompt without a stray literal first line.
+	want := agent.DefaultTemplates()
+	for name, text := range compile.DefaultTemplates() {
+		want[name] = text
+	}
+	for name, wantText := range want {
+		if got := envelope.Result.Templates[name]; got != wantText {
+			t.Errorf("agent-mode template %q does not match the raw source template.\nwant:\n%s\ngot:\n%s", name, wantText, got)
+		}
 	}
 }
