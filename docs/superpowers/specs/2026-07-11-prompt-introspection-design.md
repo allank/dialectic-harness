@@ -41,7 +41,9 @@ Each package embeds its own template files via `go:embed` and exposes `DefaultTe
 
 `.Role` is the raw role value (`"challenger"` / `"incumbent"`, matching `state.Role`'s string form — same value used in the schema block's `agent: {{.Role}}` line today). Where the turn-framing text needs it uppercased for display, the template uses a registered `upper` function: `{{.Role | upper}}`. This keeps `.Role` itself uncased and reusable across both templates that need it, rather than carrying two differently-cased fields.
 
-**Byte-identical defaults, by construction.** Each embedded default template is today's exact rendered text with `%s`/`%d` substitutions replaced 1:1 by `{{.Field}}` placeholders and no other change — including preserving the exact line breaks `fmt.Fprintf` produces today. The "Turn file path: {{.TurnFilePath}}\n\n" line that precedes the schema block in `BuildPrompt` today stays a separate, always-appended, non-template line (like directives/retry) rather than being folded into the `schema` template — this keeps `schema`'s variable set to just `.Role` (matching the catalog table) and avoids any wording change to preserve the byte-identical-defaults guarantee below.
+**Byte-identical defaults, verified by golden fixture, not hand-derived.** Each embedded default template carries today's exact prompt text with `%s`/`%d` substitutions replaced 1:1 by `{{.Field}}` placeholders. The "Turn file path: {{.TurnFilePath}}\n\n" line that precedes the schema block in `BuildPrompt` today stays a separate, always-appended, non-template line (like directives/retry) rather than being folded into the `schema` template — this keeps `schema`'s variable set to just `.Role` (matching the catalog table) and avoids any wording change.
+
+The current code's exact whitespace between concatenated pieces (framing, optional directives, the turn-file-path line, schema, optional retry block) has subtle differences — e.g. the directives block ends with a blank line, the retry block does not — that are easy to get wrong by hand-deriving a join algorithm in prose. The implementation plan must NOT hand-derive this: before refactoring, capture `BuildPrompt`'s and `BuildCompilerPrompt`'s actual current output for a representative set of inputs (with/without directives, with/without retry errors, challenger/incumbent, opening critique/regular turn) as golden fixtures — the same pattern already used in this codebase at `internal/compile/testdata/summary.golden.md` — then assert the templated version's default-path output matches those fixtures byte-for-byte. This is the source of truth for correct assembly, not this document.
 
 **Default template file contents** (exact text for each `.tmpl` file, blank lines are literal):
 
@@ -103,9 +105,7 @@ Citation rules (mandatory): every bullet and every narrative claim cites its sou
 
 ## CLI Surface
 
-**`dialectic prompts`** — new subcommand. No artifact argument, no debate execution. Output, in order:
-1. The ASCII flow diagram (below).
-2. Each of the 4 templates verbatim (raw text, placeholders visible — not rendered with sample data), under a `=== name ===` header, in catalog order: `opening_critique`, `turn`, `schema`, `compiler`.
+**`dialectic prompts`** — new subcommand. No artifact argument, no debate execution. Follows the same murli dual-audience pattern as `debate`/`runs`: in TTY mode, human text — the diagram followed by each of the 4 templates verbatim under a `=== name ===` header, in catalog order (`opening_critique`, `turn`, `schema`, `compiler`); in agent mode (`--agent` or non-TTY), `murli.Writer.WriteSuccess` with a structured payload `{"diagram": "...", "templates": {"opening_critique": "...", "turn": "...", "schema": "...", "compiler": "..."}}`. This is explicit because an agent invoking `dialectic` (the stated use case for the override feature too) needs machine-readable access to the same catalog a human sees, not just a human-formatted dump.
 
 ASCII flow diagram (plain ASCII only, no Unicode box-drawing — portable across any terminal):
 
@@ -146,9 +146,9 @@ ASCII flow diagram (plain ASCII only, no Unicode box-drawing — portable across
 
 ## Testing
 
-- `internal/agent`: for each of `opening_critique`, `turn`, `schema`, assert the default (no-override) rendered output is byte-identical to the current `BuildPrompt` output for the same inputs — the regression guard for the templating swap. Separately, assert that supplying an override in the `overrides` map produces that override's rendered text (with its own placeholders substituted) instead of the default.
-- `internal/compile`: same two-part guard for `compiler` — byte-identical default, override takes precedence when supplied.
-- `cmd/dialectic`: `dialectic prompts` output contains all 4 `=== name ===` headers and the diagram's key stage labels (`Opening Critique`, `Turn Loop`, `Compiler`). An end-to-end test (extending the existing stub-script harness) confirms `--override-prompt turn=<file>` actually changes the prompt text a stub agent receives, and that an unknown `--override-prompt` name produces a `murli.NewUserError` before any stub binary is invoked.
+- `internal/agent`: capture `BuildPrompt`'s current (pre-refactor) output as golden fixtures for a representative input matrix (opening critique / regular turn, challenger / incumbent, with / without directives, with / without retry errors), per the golden-fixture strategy above. After refactoring, assert the templated version's default-path (no overrides) output matches each fixture byte-for-byte — the regression guard for the templating swap. Separately, assert that supplying an override in the `overrides` map produces that override's rendered text (with its own placeholders substituted) instead of the default.
+- `internal/compile`: same two-part guard for `compiler` — golden-fixture-verified byte-identical default, override takes precedence when supplied.
+- `cmd/dialectic`: in TTY mode, `dialectic prompts` output contains all 4 `=== name ===` headers and the diagram's key stage labels (`Opening Critique`, `Turn Loop`, `Compiler`); in agent mode, the JSON payload's `templates` object has exactly the 4 catalog keys and a non-empty `diagram` string. An end-to-end test (extending the existing stub-script harness) confirms `--override-prompt turn=<file>` actually changes the prompt text a stub agent receives, and that an unknown `--override-prompt` name produces a `murli.NewUserError` before any stub binary is invoked.
 
 ## Scope check
 
