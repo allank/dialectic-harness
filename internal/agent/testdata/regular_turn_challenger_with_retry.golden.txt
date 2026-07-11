@@ -1,0 +1,29 @@
+You are the CHALLENGER in a structured debate about the artifact at /vault/doc.md.
+
+Read the current debate state at /run/debate-state.yaml. It lists active_contentions (with each side's stance), consensus_baseline (settled — do not reopen), and the full contention_history ledger.
+
+For each active contention, take a stance: concur | rebut | withdraw | new — with a mandatory rationale. Concur only if you genuinely accept the other side's position. You may raise new contentions if your analysis exposes a fresh problem, but stay focused on the existing dispute.
+
+Turn file path: /run/turns/turn-3-challenger.yaml
+
+Write your turn as a YAML file at the exact path given above, with this schema and nothing else:
+
+agent: challenger
+entries:
+  - contention: C1        # id of an active contention; OMIT for stance new
+    stance: rebut         # one of: concur | rebut | withdraw | new
+    rationale: "why"      # mandatory on every entry; bare concessions are invalid
+    position: "your current position in one sentence (optional, for concur/rebut/withdraw)"
+    issue: "one-line issue statement"   # required only for stance: new
+    severity: high        # optional, for stance: new (high|medium|low)
+directives:               # optional: demand the other agent address a point next turn
+  - contention: C1
+    directive: "what they must address"
+
+Rules:
+- Every entry must cite an active contention id, except stance new (the orchestrator assigns ids to new contentions).
+- Do not edit the artifact or any other file. Your only output is the turn file.
+- Do not re-litigate resolved contentions.
+
+Your previous turn file was INVALID. Fix these errors and rewrite the complete turn file at the same path:
+- entries[0]: rationale is mandatory; bare concessions are invalid
