@@ -15,11 +15,65 @@ go build -o dialectic ./cmd/dialectic
 ## Usage
 
 ```
-dialectic debate <artifact> [--challenger agy] [--incumbent claude] [--compiler claude] [--max-rounds 3] [--max-contentions 5]
+dialectic [command] [flags]
+```
+
+Every command supports `--agent` (force machine-readable JSON regardless of TTY), `--output json|ndjson|text` (explicit format override), `--schema` (print the command's machine-readable flag/subcommand schema instead of running it), `--protocol-version` (envelope version negotiation, currently `0.2`), and `--profile <name>` (load a saved flag profile) — inherited from the [murli](https://murli.allankent.com/lang/go) CLI framework this binary is built on. In a real terminal, output renders as human-readable text; piped or redirected, it auto-detects and switches to JSON.
+
+### `debate` — run the harness
+
+```
+dialectic debate <artifact> [flags]
+```
+
+Runs the bounded challenger-vs-incumbent debate over a Markdown artifact.
+
+| Flag | Default | Description |
+|---|---|---|
+| `--challenger` | `agy` | binary for the clean-room challenger role |
+| `--incumbent` | `claude` | binary for the vault-context incumbent role |
+| `--compiler` | `claude` | binary for the sessionless compiler role |
+| `--max-rounds` | `3` | circuit breaker: maximum debate rounds |
+| `--max-contentions` | `5` | cap on opening critique contentions |
+| `--override-prompt` | — | override a built-in prompt: `--override-prompt <name>=<path>` (`opening_critique`\|`turn`\|`schema`\|`compiler`), repeatable |
+
+Progress streams to stderr as the debate runs: one line per turn, appended (not overwritten), in a real terminal; one JSON event per turn in agent/non-TTY mode.
+
+### `prompts` — introspect the built-in prompts
+
+```
+dialectic prompts
+```
+
+Prints the ASCII debate-flow diagram and all four built-in prompt templates (`opening_critique`, `turn`, `schema`, `compiler`) raw, with placeholders visible — the binary documents its own behavior. Read-only, no artifact required. Use this to see the exact template text before overriding one with `debate --override-prompt`.
+
+### `runs` — regenerate the kill-criterion index
+
+```
 dialectic runs [dir] [--write]
 ```
 
-`debate` runs the bounded challenger-vs-incumbent debate over a Markdown artifact. `runs` scans a directory tree for update briefs and regenerates the kill-criterion index table (pass `--write` to also save it as `a2a-runs.md` in that directory).
+Scans a directory tree for update briefs (`arbiter_verdict` frontmatter) and regenerates the kill-criterion index table. Pass `--write` to also save it as `a2a-runs.md` in that directory; without it, the table only prints to stdout.
+
+### `describe` — self-describing binary
+
+```
+dialectic describe [--agents-md]
+```
+
+Prints the full command tree, flags, and capabilities as a single JSON document — lets an orchestrating agent discover what this binary can do without parsing `--help` text. Pass `--agents-md` to generate an `AGENTS.md` stub instead.
+
+### `profile` — saved flag profiles
+
+```
+dialectic profile save|list|show|use|delete <name>
+```
+
+Framework-provided flag-profile management (from murli). Not currently wired up for any dialectic-specific flag — `dialectic profile save` will report "no profileable flags were set" until a flag is explicitly marked profileable in the code.
+
+### `completion`
+
+Standard shell-completion script generation (bash/zsh/fish/powershell) — see `dialectic completion --help`.
 
 ## Trying it out
 
