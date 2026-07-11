@@ -32,6 +32,23 @@ func newDebateCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			w := murliCobra.NewWriter(cmd)
 			reportProgress := func(ev progress.Event) {
+				// TTY: append each event as its own line via w.Log (plain
+				// Fprintln) rather than w.WriteProgress, whose TTY mode
+				// overwrites the current line with \r\033[K — a spinner-style
+				// display that discards prior progress. Agent/non-TTY mode
+				// already writes one JSON line per event with no overwrite,
+				// so it keeps using WriteProgress unchanged.
+				if w.IsTTY() {
+					line := ev.Message
+					if ev.Stage != "" {
+						line = "[" + ev.Stage + "] " + line
+					}
+					if ev.MaxRounds > 0 {
+						line += fmt.Sprintf(" (%d/%d)", ev.Turn, ev.MaxRounds*2)
+					}
+					w.Log(line)
+					return
+				}
 				w.WriteProgress(murli.ProgressEvent{
 					Stage:   ev.Stage,
 					Current: ev.Turn,
