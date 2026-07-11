@@ -191,6 +191,42 @@ entries:
 	}
 }
 
+func TestOpeningCritiqueOverCapRetriesOnceThenHalts(t *testing.T) {
+	tooMany := `agent: challenger
+entries:
+  - stance: new
+    issue: "issue 1"
+    rationale: "r"
+  - stance: new
+    issue: "issue 2"
+    rationale: "r"
+  - stance: new
+    issue: "issue 3"
+    rationale: "r"
+  - stance: new
+    issue: "issue 4"
+    rationale: "r"
+  - stance: new
+    issue: "issue 5"
+    rationale: "r"
+  - stance: new
+    issue: "issue 6"
+    rationale: "r"
+`
+	r := &scriptedRunner{payloads: []string{tooMany, tooMany}}
+	l := newTestLoop(t, r) // MaxContentions: 5
+	_, err := l.Run(context.Background())
+	if !errors.Is(err, ErrHalted) {
+		t.Fatalf("want ErrHalted, got %v", err)
+	}
+	if len(r.requests) != 2 {
+		t.Fatalf("want exactly 2 invocations (original + one retry), got %d", len(r.requests))
+	}
+	if !strings.Contains(r.requests[1].Prompt, "exceeding the cap of 5") {
+		t.Errorf("retry prompt must feed back the cap violation:\n%s", r.requests[1].Prompt)
+	}
+}
+
 func TestRetrySucceedsAndRunContinues(t *testing.T) {
 	missingRationale := `agent: challenger
 entries:

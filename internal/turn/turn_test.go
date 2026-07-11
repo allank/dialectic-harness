@@ -1,6 +1,7 @@
 package turn
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -39,7 +40,7 @@ func TestValidTurnFilePasses(t *testing.T) {
 		},
 		Directives: []DirectiveRequest{{Contention: "C1", Directive: "Provide a latency benchmark."}},
 	}
-	if errs := Validate(tf, fixtureState()); len(errs) != 0 {
+	if errs := Validate(tf, fixtureState(), 5); len(errs) != 0 {
 		t.Fatalf("want valid, got errors: %v", errs)
 	}
 }
@@ -63,7 +64,7 @@ func TestValidationErrors(t *testing.T) {
 	st := fixtureState()
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			errs := Validate(tc.tf, st)
+			errs := Validate(tc.tf, st, 5)
 			if len(errs) == 0 {
 				t.Fatal("want validation errors, got none")
 			}
@@ -72,5 +73,45 @@ func TestValidationErrors(t *testing.T) {
 				t.Errorf("errors %q should contain %q", joined, tc.wantSub)
 			}
 		})
+	}
+}
+
+func newEntries(n int) []Entry {
+	entries := make([]Entry, n)
+	for i := range entries {
+		entries[i] = Entry{Stance: state.StanceNew, Issue: fmt.Sprintf("issue %d", i), Rationale: "r"}
+	}
+	return entries
+}
+
+func TestOpeningCritiqueOverCapIsInvalid(t *testing.T) {
+	st := state.New("s", "a.md", 3, nil) // TurnCount 0, NextRole challenger (zero values)
+	st.NextRole = state.RoleChallenger
+	tf := File{Agent: state.RoleChallenger, Entries: newEntries(6)}
+	errs := Validate(tf, st, 5)
+	joined := strings.Join(errs, "; ")
+	if !strings.Contains(joined, "exceeding the cap of 5") {
+		t.Errorf("want cap-exceeded error, got: %q", joined)
+	}
+}
+
+func TestOpeningCritiqueAtCapIsValid(t *testing.T) {
+	st := state.New("s", "a.md", 3, nil)
+	st.NextRole = state.RoleChallenger
+	tf := File{Agent: state.RoleChallenger, Entries: newEntries(5)}
+	if errs := Validate(tf, st, 5); len(errs) != 0 {
+		t.Errorf("want valid at exactly the cap, got errors: %v", errs)
+	}
+}
+
+func TestLaterTurnNewContentionsAreUncapped(t *testing.T) {
+	st := fixtureState() // TurnCount 1: not the opening critique
+	st.NextRole = state.RoleIncumbent
+	tf := File{Agent: state.RoleIncumbent, Entries: newEntries(6)}
+	errs := Validate(tf, st, 5)
+	for _, e := range errs {
+		if strings.Contains(e, "exceeding the cap") {
+			t.Errorf("cap must not apply past the opening critique, got: %v", errs)
+		}
 	}
 }

@@ -172,7 +172,7 @@ func (l *Loop) invokeAndValidate(ctx context.Context, role state.Role, in agent.
 	if perr != nil {
 		return turn.File{}, res.SessionID, []string{perr.Error()}, nil
 	}
-	return tf, res.SessionID, turn.Validate(tf, l.State), nil
+	return tf, res.SessionID, turn.Validate(tf, l.State, l.MaxContentions), nil
 }
 
 func workDirFor(l *Loop, role state.Role) string {

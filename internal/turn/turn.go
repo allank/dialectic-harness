@@ -45,8 +45,11 @@ func Parse(raw []byte) (File, error) {
 }
 
 // Validate returns one message per violation, phrased so it can be fed back
-// to the agent verbatim on the single retry.
-func Validate(tf File, st *state.DebateState) []string {
+// to the agent verbatim on the single retry. maxContentions caps how many
+// stance-new entries the opening critique (the first turn, st.TurnCount==0)
+// may raise; it is ignored on every later turn, where new contentions are
+// uncapped.
+func Validate(tf File, st *state.DebateState, maxContentions int) []string {
 	var errs []string
 	if tf.Agent != st.NextRole {
 		errs = append(errs, fmt.Sprintf("agent is %q but the orchestrator expected turn from %s", tf.Agent, st.NextRole))
@@ -54,6 +57,7 @@ func Validate(tf File, st *state.DebateState) []string {
 	if len(tf.Entries) == 0 {
 		errs = append(errs, "turn file must contain at least one entry")
 	}
+	newCount := 0
 	for i, e := range tf.Entries {
 		at := fmt.Sprintf("entries[%d]", i)
 		if !state.ValidStance(e.Stance) {
@@ -63,6 +67,7 @@ func Validate(tf File, st *state.DebateState) []string {
 			errs = append(errs, fmt.Sprintf("%s: rationale is mandatory; bare concessions are invalid", at))
 		}
 		if e.Stance == state.StanceNew {
+			newCount++
 			if e.Issue == "" {
 				errs = append(errs, fmt.Sprintf("%s: stance 'new' requires an issue statement", at))
 			}
@@ -76,6 +81,9 @@ func Validate(tf File, st *state.DebateState) []string {
 		} else if st.FindActive(e.Contention) == nil {
 			errs = append(errs, fmt.Sprintf("%s: unknown contention id %q; cite an active contention or use stance 'new'", at, e.Contention))
 		}
+	}
+	if st.TurnCount == 0 && maxContentions > 0 && newCount > maxContentions {
+		errs = append(errs, fmt.Sprintf("opening critique raised %d contentions, exceeding the cap of %d", newCount, maxContentions))
 	}
 	for i, d := range tf.Directives {
 		if st.FindActive(d.Contention) == nil {
