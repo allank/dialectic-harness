@@ -33,7 +33,7 @@ func (c *cannedRunner) Invoke(_ context.Context, req agent.Request) (agent.Resul
 func TestRunCompilerAcceptsValidDoc(t *testing.T) {
 	r := &cannedRunner{payloads: []string{validCompilerDoc}}
 	out := filepath.Join(t.TempDir(), "brief-body.md")
-	doc, err := RunCompiler(context.Background(), r, "claude", summaryFixture(), "/runs/debate-state.yaml", t.TempDir(), out, nil)
+	doc, err := RunCompiler(context.Background(), r, "claude", summaryFixture(), "/runs/debate-state.yaml", t.TempDir(), out, nil, nil)
 	if err != nil {
 		t.Fatalf("RunCompiler: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestRunCompilerRetriesOnceThenFails(t *testing.T) {
 	bad := "## Narrative\n\nno citations here\n"
 	r := &cannedRunner{payloads: []string{bad, bad}}
 	out := filepath.Join(t.TempDir(), "brief-body.md")
-	_, err := RunCompiler(context.Background(), r, "claude", summaryFixture(), "state.yaml", t.TempDir(), out, nil)
+	_, err := RunCompiler(context.Background(), r, "claude", summaryFixture(), "state.yaml", t.TempDir(), out, nil, nil)
 	if err == nil {
 		t.Fatal("want error after failed retry")
 	}
@@ -71,7 +71,7 @@ func TestRunCompilerReportsProgressOnSuccess(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "brief-body.md")
 	var events []progress.Event
 	_, err := RunCompiler(context.Background(), r, "claude", summaryFixture(), "/runs/debate-state.yaml", t.TempDir(), out,
-		func(ev progress.Event) { events = append(events, ev) })
+		func(ev progress.Event) { events = append(events, ev) }, nil)
 	if err != nil {
 		t.Fatalf("RunCompiler: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestRunCompilerReportsProgressOnRetryThenFail(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "brief-body.md")
 	var events []progress.Event
 	_, err := RunCompiler(context.Background(), r, "claude", summaryFixture(), "state.yaml", t.TempDir(), out,
-		func(ev progress.Event) { events = append(events, ev) })
+		func(ev progress.Event) { events = append(events, ev) }, nil)
 	if err == nil {
 		t.Fatal("want error after failed retry")
 	}

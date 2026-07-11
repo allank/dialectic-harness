@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"text/template"
 
 	"github.com/allank/dialectic/internal/agent"
 	"github.com/allank/dialectic/internal/progress"
@@ -12,33 +13,41 @@ import (
 
 // BuildCompilerPrompt builds the prompt for the sessionless Compiler role: a
 // disinterested reader of the finished ledger who writes a narrative and
-// proposed changes, every claim cited back to the ledger.
-func BuildCompilerPrompt(st *state.DebateState, statePath, outPath string, retryErrors []string) string {
-	var b strings.Builder
-	b.WriteString("You are the COMPILER for a finished two-agent debate. You did not participate and have no stake in the dispute. Read the full debate ledger at ")
-	b.WriteString(statePath)
-	b.WriteString(" and the target artifact at ")
-	b.WriteString(st.TargetArtifact)
-	b.WriteString(".\n\nWrite a Markdown document to ")
-	b.WriteString(outPath)
-	b.WriteString(" with exactly these three sections:\n\n")
-	b.WriteString("## Narrative\nA prose account of how the debate evolved: what was contested, what moved, what stuck.\n\n")
-	b.WriteString("## Proposed Changes\nBullet list. Each item proposes a concrete edit to the artifact, derived ONLY from consensus_baseline items.\n\n")
-	b.WriteString("## Judgment Calls\nBullet list. Each item poses a question the author must decide, with context, derived ONLY from unresolved active_contentions.\n\n")
-	b.WriteString("Citation rules (mandatory): every bullet and every narrative claim cites its source as (C<id>, turn <n>), e.g. (C2, turn 4). Cite only contention ids that exist in the ledger. Use plain CommonMark only — no wikilinks or Obsidian syntax. Do not edit the artifact or any other file.\n")
-	if len(retryErrors) > 0 {
-		b.WriteString("\nYour previous output FAILED citation validation. Fix these errors and rewrite the complete document at the same path:\n")
-		for _, e := range retryErrors {
-			b.WriteString("- " + e + "\n")
-		}
+// proposed changes, every claim cited back to the ledger. overrides maps
+// "compiler" to raw template text that takes precedence over the embedded
+// default; a nil or empty map (or one missing "compiler") uses the default.
+func BuildCompilerPrompt(st *state.DebateState, statePath, outPath string, retryErrors []string, overrides map[string]string) (string, error) {
+	text, ok := overrides["compiler"]
+	if !ok {
+		text = defaultTemplates["compiler"]
 	}
-	return b.String()
+	tmpl, err := template.New("compiler").Parse(text)
+	if err != nil {
+		return "", fmt.Errorf("parse compiler template: %w", err)
+	}
+	var buf strings.Builder
+	data := struct{ StatePath, TargetArtifact, OutPath string }{
+		StatePath: statePath, TargetArtifact: st.TargetArtifact, OutPath: outPath,
+	}
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("render compiler template: %w", err)
+	}
+	result := buf.String()
+	if len(retryErrors) > 0 {
+		var rb strings.Builder
+		rb.WriteString("\nYour previous output FAILED citation validation. Fix these errors and rewrite the complete document at the same path:\n")
+		for _, e := range retryErrors {
+			rb.WriteString("- " + e + "\n")
+		}
+		result += rb.String()
+	}
+	return result, nil
 }
 
 // RunCompiler invokes the compiler binary sessionless, validates citation
 // integrity deterministically, retries once with errors, then fails.
 func RunCompiler(ctx context.Context, r agent.Runner, binary string, st *state.DebateState,
-	statePath, workDir, outPath string, report progress.Func) (string, error) {
+	statePath, workDir, outPath string, report progress.Func, overrides map[string]string) (string, error) {
 	var retryErrors []string
 	for attempt := 0; attempt < 2; attempt++ {
 		if attempt == 0 {
@@ -46,9 +55,13 @@ func RunCompiler(ctx context.Context, r agent.Runner, binary string, st *state.D
 		} else {
 			reportCompile(report, "compiler output failed citation validation — retrying with feedback")
 		}
+		prompt, err := BuildCompilerPrompt(st, statePath, outPath, retryErrors, overrides)
+		if err != nil {
+			return "", fmt.Errorf("build compiler prompt: %w", err)
+		}
 		res, err := r.Invoke(ctx, agent.Request{
 			Binary:     binary,
-			Prompt:     BuildCompilerPrompt(st, statePath, outPath, retryErrors),
+			Prompt:     prompt,
 			WorkDir:    workDir,
 			SessionID:  "", // sessionless by design: no stake, no memory
 			OutputPath: outPath,
