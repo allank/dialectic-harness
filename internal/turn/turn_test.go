@@ -31,6 +31,51 @@ func TestParseRejectsMalformedYAML(t *testing.T) {
 	}
 }
 
+const validMinimalTurn = "agent: incumbent\nentries:\n  - contention: C1\n    stance: rebut\n    rationale: because\n"
+
+func TestParseStripsTrailingLeakedClosingTag(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+	}{
+		{"with trailing newline", validMinimalTurn + "</content>\n"},
+		{"without trailing newline", validMinimalTurn + "</content>"},
+		{"blank line before tag", validMinimalTurn + "\n</content>\n"},
+	}
+	want, err := Parse([]byte(validMinimalTurn))
+	if err != nil {
+		t.Fatalf("baseline Parse: %v", err)
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Parse([]byte(tc.raw))
+			if err != nil {
+				t.Fatalf("Parse should strip the leaked tag and succeed, got: %v", err)
+			}
+			if got.Agent != want.Agent || len(got.Entries) != len(want.Entries) {
+				t.Errorf("stripped parse result diverges from baseline: got %+v, want %+v", got, want)
+			}
+		})
+	}
+}
+
+func TestParseDoesNotStripATagThatIsAllTheContent(t *testing.T) {
+	if _, err := Parse([]byte("</content>\n")); err == nil {
+		t.Fatal("a file that is nothing but a closing tag should still fail to parse")
+	}
+}
+
+func TestParseDoesNotStripANonTrailingTag(t *testing.T) {
+	raw := "agent: incumbent\nentries:\n  - contention: C1\n    stance: rebut\n    rationale: >\n      </content> mentioned mid-rationale\n"
+	got, err := Parse([]byte(raw))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !strings.Contains(got.Entries[0].Rationale, "</content>") {
+		t.Errorf("a tag that is genuinely part of the content must not be stripped, got rationale: %q", got.Entries[0].Rationale)
+	}
+}
+
 func TestValidTurnFilePasses(t *testing.T) {
 	tf := File{
 		Agent: state.RoleIncumbent,

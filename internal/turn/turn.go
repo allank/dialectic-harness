@@ -6,6 +6,7 @@ package turn
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 
@@ -32,9 +33,35 @@ type File struct {
 	Directives []DirectiveRequest `yaml:"directives,omitempty"`
 }
 
+// trailingClosingTag matches a lone XML/HTML-style closing tag (e.g.
+// "</content>") on its own line. Observed leaking onto the last line of an
+// otherwise well-formed turn file — an artifact of the underlying agent
+// CLI's own tool-call formatting on a long generation, not part of the
+// document itself.
+var trailingClosingTag = regexp.MustCompile(`</[A-Za-z_][\w:-]*>\s*$`)
+
+// stripTrailingLeakedClosingTag removes a single stray closing tag from the
+// end of raw, if present, leaving everything else untouched. Only the very
+// last line is eligible, and only when real content precedes it — this
+// targets the one observed failure shape without papering over genuinely
+// malformed turn files.
+func stripTrailingLeakedClosingTag(raw []byte) []byte {
+	trimmed := bytes.TrimRight(raw, "\n\r\t ")
+	loc := trailingClosingTag.FindIndex(trimmed)
+	if loc == nil || loc[1] != len(trimmed) {
+		return raw
+	}
+	before := trimmed[:loc[0]]
+	if len(bytes.TrimSpace(before)) == 0 {
+		return raw
+	}
+	return before
+}
+
 // Parse strictly decodes a turn file. Unknown fields are rejected so a turn
 // file cannot smuggle in state mutations (e.g. rewritten history).
 func Parse(raw []byte) (File, error) {
+	raw = stripTrailingLeakedClosingTag(raw)
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.KnownFields(true)
 	var tf File
